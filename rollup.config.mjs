@@ -60,7 +60,9 @@ const application = {
                 { src: 'static/icons', dest: 'static' },
                 { src: 'static/lib', dest: 'static' },
                 { src: 'static/locales', dest: 'static' },
-                { src: 'static/env/VertebraeHDRI_v1_512.png', dest: 'static/env' }
+                { src: 'static/env/VertebraeHDRI_v1_512.png', dest: 'static/env' },
+                { src: 'config.json' },
+                { src: 'data', dest: 'data' }
             ]
         }),
         alias({
@@ -115,7 +117,60 @@ const serviceWorker = {
     cache: false
 };
 
+const viewer = {
+    input: 'src/viewer.ts',
+    output: {
+        dir: 'dist',
+        format: 'esm',
+        sourcemap: true
+    },
+    plugins: [
+        copyAndWatch({
+            targets: [
+                {
+                    src: 'src/viewer.html',
+                    transform: (contents, filename) => {
+                        return contents.toString().replace('__BASE_HREF__', HREF);
+                    }
+                }
+            ]
+        }),
+        alias({
+            entries: {
+                'playcanvas': ENGINE_DIR,
+                '@playcanvas/pcui': PCUI_DIR
+            }
+        }),
+        typescript({
+            tsconfig: './tsconfig.json'
+        }),
+        resolve(),
+        image({ dom: false }),
+        json(),
+        scss({
+            sourceMap: true,
+            runtime: sass,
+            processor: (css) => {
+                return postcss([autoprefixer])
+                .process(css, { from: undefined })
+                .then(result => result.css);
+            },
+            fileName: 'viewer.css',
+            watch: 'src/viewer.scss'
+        }),
+        BUILD_TYPE === 'release' &&
+        strip({
+            include: ['**/*.ts'],
+            functions: ['Debug.exec']
+        }),
+        BUILD_TYPE !== 'debug' && terser()
+    ],
+    treeshake: 'smallest',
+    cache: false
+};
+
 export default [
     application,
+    viewer,
     serviceWorker
 ];

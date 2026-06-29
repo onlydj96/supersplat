@@ -1,0 +1,18 @@
+{
+    "_comment": "SuperSplat Viewer – project configuration",
+
+    "activeProject": "example",
+
+    "projects": {
+        "example": {
+            "name": "Example Project",
+            "file": "data/example/model.ply",
+            "viewer": {
+                "background": "#1a1a2e",
+                "mode": "orbit",
+                "autorotate": 0,
+                "fov": 60
+            }
+        }
+    }
+}
