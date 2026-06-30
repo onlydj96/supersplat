@@ -141,12 +141,15 @@ export const loadSplatFromUrl = async (
     scene: Scene
 ): Promise<void> => {
     try {
-        // Build a MappedReadFileSystem rooted at the URL's directory so that
-        // relative companion files (SOG WebP tiles, etc.) resolve correctly.
-        const baseUrl = new URL('.', new URL(url, window.location.href)).href;
+        // Resolve to absolute URL first.
+        // UrlReadFileSystem does new URL(filename, baseUrl) internally; passing a
+        // relative filename would double the path (e.g. data/x/data/x/scene.sog).
+        // An absolute URL is left unchanged by new URL(absolute, base), so it is safe.
+        const absoluteUrl = new URL(url, window.location.href).href;
+        const baseUrl = new URL('.', absoluteUrl).href;
         const fileSystem = new MappedReadFileSystem(baseUrl);
 
-        const model = await scene.assetLoader.load(url, fileSystem, false);
+        const model = await scene.assetLoader.load(absoluteUrl, fileSystem, false);
         await scene.add(model);
 
         // Auto-focus camera on newly loaded content

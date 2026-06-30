@@ -577,18 +577,21 @@ class Camera extends Element {
 
         Camera.calcForwardVec(forwardVec, azimElev.azim, azimElev.elev);
 
-        if (this.lookCameraPos) {
-            cameraPosition.copy(this.lookCameraPos);
-            if (this.azimElevTween.timer >= this.azimElevTween.transitionTime) {
-                this.lookCameraPos = null;
+        if (this.controlMode !== 'fly') {
+            if (this.lookCameraPos) {
+                cameraPosition.copy(this.lookCameraPos);
+                if (this.azimElevTween.timer >= this.azimElevTween.transitionTime) {
+                    this.lookCameraPos = null;
+                }
+            } else {
+                cameraPosition.copy(forwardVec);
+                cameraPosition.mulScalar(distance.distance * this.sceneRadius / this.fovFactor);
+                cameraPosition.add(this.focalPointTween.value);
             }
-        } else {
-            cameraPosition.copy(forwardVec);
-            cameraPosition.mulScalar(distance.distance * this.sceneRadius / this.fovFactor);
-            cameraPosition.add(this.focalPointTween.value);
+
+            this.mainCamera.setLocalPosition(cameraPosition);
         }
 
-        this.mainCamera.setLocalPosition(cameraPosition);
         this.mainCamera.setLocalEulerAngles(azimElev.elev, azimElev.azim, 0);
 
         this.fitClippingPlanes(this.mainCamera.getLocalPosition(), this.mainCamera.forward);

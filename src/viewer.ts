@@ -31,6 +31,8 @@ import { WebPCodec } from '@playcanvas/splat-transform';
 import { Color, Vec3, createGraphicsDevice } from 'playcanvas';
 
 import { CommandQueue } from './command-queue';
+import { CollisionSystem, ICollisionSystem } from './collision-system';
+import { VoxelCollisionSystem } from './voxel-collision-system';
 import { Events } from './events';
 import { Scene } from './scene';
 import { getSceneConfig } from './scene-config';
@@ -48,11 +50,33 @@ interface ProjectViewerOptions {
     fov?: number;          // degrees
 }
 
+interface ProjectWalkOptions {
+    /**
+     * Path to a voxel.json file (relative to dist/).
+     * The companion voxel.bin must sit alongside it.
+     * Takes priority over collisionFile when both are specified.
+     */
+    voxelFile?: string;
+    /** Path to a GLB collision mesh (relative to dist/). Fallback if no voxelFile. */
+    collisionFile?: string;
+    /** Eye height above floor in metres (default 1.6) */
+    eyeHeight?: number;
+    /** Fixed floor Y when no collision mesh is available (default 0) */
+    floorY?: number;
+    /** Movement speed in m/s (default 3) */
+    speed?: number;
+    /** World-space start position [x, y, z] */
+    startPosition?: [number, number, number];
+    /** Initial yaw in degrees (default 0) */
+    startYaw?: number;
+}
+
 interface ProjectEntry {
     name: string;
     /** Path relative to dist/ – e.g. "data/my-project/model.ply" */
     file: string;
     viewer?: ProjectViewerOptions;
+    walk?: ProjectWalkOptions;
 }
 
 interface ViewerConfig {
@@ -111,6 +135,22 @@ const initViewer = async () => {
     // ── Command queue ────────────────────────────────────────────────────────
     const commandQueue = new CommandQueue();
     events.function('queue', (fn: () => Promise<void> | void) => commandQueue.enqueue(fn));
+
+    // ── Stub editor-only event functions (render loop queries these) ─────────
+    // Without these stubs the scene logs "function not found" every frame.
+    events.function('view.outlineSelection',      () => false);
+    events.function('camera.showPoses',           () => false);
+    events.function('camera.overlay',             () => false);
+    events.function('camera.bound',               () => false);
+    events.function('camera.mode',                () => 'default');
+    events.function('camera.splatSize',           () => 0);
+    events.function('view.bands',                 () => 0);
+    events.function('view.centersUseGaussianColor', () => false);
+    events.function('selection',                  () => null);
+    events.function('selectedClr',                () => new Color(0, 0, 0, 0));
+    events.function('unselectedClr',              () => new Color(0, 0, 0, 0));
+    events.function('lockedClr',                  () => new Color(0, 0, 0, 0));
+    events.function('camera.poses',               () => []);
 
     // ── WebP WASM codec (needed for .sog / .ssog format support) ────────────
     WebPCodec.wasmUrl = new URL('static/lib/webp/webp.wasm', document.baseURI).toString();
@@ -260,6 +300,41 @@ const initViewer = async () => {
                 }
                 if (effectiveAutorotate === null && vo.autorotate) {
                     effectiveAutorotate = String(vo.autorotate);
+                }
+
+                // ── Walk config from config.json ─────────────────────────────
+                const wo = project.walk;
+                if (wo) {
+                    let collision: ICollisionSystem | undefined;
+
+                    if (wo.voxelFile) {
+                        // Voxel-based collision (SuperSplat native format)
+                        const vc = new VoxelCollisionSystem();
+                        const ok = await vc.load(wo.voxelFile);
+                        if (ok) {
+                            collision = vc;
+                        } else {
+                            console.warn('[supersplat-viewer] voxel collision failed to load:', wo.voxelFile);
+                        }
+                    } else if (wo.collisionFile) {
+                        // GLB-based collision (fallback)
+                        const gc = new CollisionSystem();
+                        const ok = await gc.load(wo.collisionFile, scene.app);
+                        if (ok) {
+                            collision = gc;
+                        } else {
+                            console.warn('[supersplat-viewer] collision mesh failed to load:', wo.collisionFile);
+                        }
+                    }
+
+                    walkController.configure({
+                        collision,
+                        eyeHeight:     wo.eyeHeight,
+                        floorY:        wo.floorY,
+                        speed:         wo.speed,
+                        startPosition: wo.startPosition,
+                        startYaw:      wo.startYaw
+                    });
                 }
             } else {
                 console.warn(`[supersplat-viewer] config.json: project "${cfg.activeProject}" has no "file" field.`);

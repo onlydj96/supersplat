@@ -64,7 +64,8 @@ class PointerController {
                 if (pressedButton !== -1) {
                     return;
                 }
-                target.setPointerCapture(event.pointerId);
+                // setPointerCapture may throw InvalidStateError when pointer lock is active
+                try { target.setPointerCapture(event.pointerId); } catch { /* ignore */ }
                 pressedButton = event.button;
                 x = event.offsetX;
                 y = event.offsetY;
@@ -75,7 +76,7 @@ class PointerController {
                 }
             } else if (event.pointerType === 'touch') {
                 if (touches.length === 0) {
-                    target.setPointerCapture(event.pointerId);
+                    try { target.setPointerCapture(event.pointerId); } catch { /* ignore */ }
                 }
                 touches.push({
                     x: event.offsetX,
