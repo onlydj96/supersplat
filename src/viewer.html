@@ -9,6 +9,8 @@
         <!-- Early connection warm-up for the CDN that hosts scene/collision files -->
         <link rel="preconnect" href="https://pub-008462eef1854bbebb57dac11df361c7.r2.dev" crossorigin>
         <link rel="dns-prefetch" href="https://pub-008462eef1854bbebb57dac11df361c7.r2.dev">
+        <!-- Preload WebP WASM codec so it is in cache before the .sog parser needs it -->
+        <link rel="preload" href="./static/lib/webp/webp.wasm" as="fetch" crossorigin>
     </head>
     <body>
         <div id="canvas-container">

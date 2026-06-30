@@ -183,6 +183,10 @@ const initViewer = async () => {
 
     // ── WebP WASM codec (needed for .sog / .ssog format support) ────────────
     WebPCodec.wasmUrl = new URL('static/lib/webp/webp.wasm', document.baseURI).toString();
+    // Pre-compile the WASM now so it is ready before the .sog parser requests it.
+    // readSog() calls WebPCodec.create() internally; Emscripten caches the compiled
+    // module, so the second create() returns almost instantly.
+    void WebPCodec.create().catch(() => {});
 
     // ── Scene config (URL param overrides) ──────────────────────────────────
     const sceneConfig = getSceneConfig([getURLArgs()]);
