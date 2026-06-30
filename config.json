@@ -16,7 +16,7 @@
                 "voxelFile": "https://pub-008462eef1854bbebb57dac11df361c7.r2.dev/seoul-stage/scene.voxel.json",
                 "eyeHeight": 1.6,
                 "floorY": 0.0,
-                "speed": 3.0,
+                "speed": 1.5,
                 "startPosition": [-1.4, 2.0, -3.9],
                 "startYaw": 0
             }

@@ -169,8 +169,25 @@ const viewer = {
     cache: false
 };
 
+const serviceWorkerViewer = {
+    input: 'src/sw-viewer.ts',
+    output: {
+        dir: 'dist',
+        format: 'esm',
+        sourcemap: true
+    },
+    plugins: [
+        resolve(),
+        json(),
+        typescript()
+    ],
+    treeshake: 'smallest',
+    cache: false
+};
+
 export default [
     application,
     viewer,
-    serviceWorker
+    serviceWorker,
+    serviceWorkerViewer
 ];

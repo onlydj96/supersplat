@@ -120,6 +120,7 @@ export class WalkController {
     private readonly _onMouseMove: (e: MouseEvent) => void;
     private readonly _onPointerLockChange: () => void;
     private readonly _onCanvasClick: () => void;
+    private readonly _onDblClick: (e: MouseEvent) => void;
     private readonly _onBlur: () => void;
     private readonly _onUpdate: (dt: number) => void;
 
@@ -137,6 +138,7 @@ export class WalkController {
         this._onMouseMove          = this._handleMouseMove.bind(this);
         this._onPointerLockChange  = this._handlePointerLockChange.bind(this);
         this._onCanvasClick        = this._handleCanvasClick.bind(this);
+        this._onDblClick           = this._handleDblClick.bind(this);
         this._onBlur               = this._clearKeys.bind(this);
         this._onUpdate             = this._update.bind(this);
     }
@@ -176,8 +178,6 @@ export class WalkController {
         this._verticalVel = 0;
 
         // Fly control mode: camera.look() rotates in place (no orbit).
-        // PointerController won't move the camera because we never fire
-        // camera.fly.* events — movement is handled in _update() below.
         this.scene.events.fire('camera.setControlMode', 'fly');
 
         // Place camera at configured start position (or keep current position).
@@ -187,12 +187,14 @@ export class WalkController {
         document.addEventListener('keyup',            this._onKeyUp);
         document.addEventListener('mousemove',        this._onMouseMove);
         document.addEventListener('pointerlockchange', this._onPointerLockChange);
+        // Intercept dblclick in capture phase so PointerController never sees it.
+        // Without this, dblclick fires camera.pickFocalPoint() which teleports
+        // the camera outside the walkable area.
+        document.addEventListener('dblclick',         this._onDblClick,          { capture: true });
         this.canvas.addEventListener('click',         this._onCanvasClick);
         window.addEventListener('blur',               this._onBlur);
         this.scene.events.on('update',                this._onUpdate);
 
-        // Do NOT call requestPointerLock() here — the browser requires a user
-        // gesture (click).  _handleCanvasClick() will request it on first click.
         this._updateHint();
     }
 
@@ -209,6 +211,7 @@ export class WalkController {
         document.removeEventListener('keyup',             this._onKeyUp);
         document.removeEventListener('mousemove',         this._onMouseMove);
         document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+        document.removeEventListener('dblclick',          this._onDblClick, { capture: true } as EventListenerOptions);
         this.canvas.removeEventListener('click',          this._onCanvasClick);
         window.removeEventListener('blur',                this._onBlur);
         this.scene.events.off('update',                   this._onUpdate);
@@ -335,6 +338,12 @@ export class WalkController {
         }
     }
 
+    private _handleDblClick(event: MouseEvent): void {
+        // Block PointerController's dblclick handler (camera.pickFocalPoint)
+        // which would teleport the camera outside the walkable area.
+        event.stopImmediatePropagation();
+    }
+
     private _handlePointerLockChange(): void {
         if (!this._active) return;
         this._updateHint();
@@ -372,8 +381,24 @@ export class WalkController {
             return;
         }
         this.hint.classList.remove('hidden');
-        this.hint.textContent = this.pointerLocked
-            ? 'W A S D  ·  mouse to look  ·  Shift faster  ·  Esc to release mouse'
-            : 'Click to capture mouse and enter walk mode';
+
+        const key = (arrow: string, letter: string) =>
+            `<span class="wasd-key"><span class="k-arrow">${arrow}</span><span class="k-letter">${letter}</span></span>`;
+
+        const subMsg = this.pointerLocked
+            ? '<span class="walk-hint-sub">Shift: 빠르게 &nbsp;·&nbsp; Esc: 마우스 해제</span>'
+            : '';
+
+        this.hint.innerHTML =
+            '<div class="wasd-grid">' +
+            '  <span></span>' +
+            `  ${key('↑', 'W')}` +
+            '  <span></span>' +
+            `  ${key('←', 'A')}` +
+            `  ${key('↓', 'S')}` +
+            `  ${key('→', 'D')}` +
+            '</div>' +
+            '<span class="walk-mouse-hint">🖱&nbsp; 마우스로 방향 조절</span>' +
+            subMsg;
     }
 }

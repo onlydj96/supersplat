@@ -128,6 +128,35 @@ const getURLArgs = (): Record<string, any> => {
 const initViewer = async () => {
     // Grab the elements defined in viewer.html
     const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+    const loadingEl = document.getElementById('loading') as HTMLDivElement;
+
+    const loadingText = loadingEl?.querySelector('.loading-text') as HTMLElement | null;
+    const t0 = performance.now();
+
+    const setLoadingMsg = (msg: string) => {
+        if (loadingText) loadingText.textContent = msg;
+    };
+
+    const hideLoading = () => {
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+        console.log(`[supersplat-viewer] total load time: ${elapsed}s`);
+        if (!loadingEl || loadingEl.classList.contains('hidden')) return;
+        loadingEl.classList.add('fading');
+        loadingEl.addEventListener('transitionend', () => loadingEl.classList.add('hidden'), { once: true });
+    };
+
+    // ── Parse URL parameters (synchronous – needed early for parallel fetch) ─
+    const url = new URL(window.location.href);
+    const loadList = [
+        ...url.searchParams.getAll('load'),
+        ...url.searchParams.getAll('content')
+    ];
+    const filenameList = url.searchParams.getAll('filename');
+
+    // ── Kick off config.json fetch now, in parallel with WebGL init ──────────
+    // config.json is a fast local request; running it concurrently with
+    // createGraphicsDevice() means neither waits for the other.
+    const configPromise = loadList.length === 0 ? loadConfig() : Promise.resolve(null);
 
     // ── Events ──────────────────────────────────────────────────────────────
     const events = new Events();
@@ -231,10 +260,6 @@ const initViewer = async () => {
     // ── Signal readiness to parent frame ─────────────────────────────────────
     postToParent({ type: 'supersplat-viewer:ready' });
 
-    // ── Parse URL parameters ─────────────────────────────────────────────────
-    // ?content= is an alias for ?load= (compatible with official PlayCanvas viewer)
-    const url = new URL(window.location.href);
-
     // ── Poster (loading preview image) ───────────────────────────────────────
     const posterEl = document.getElementById('poster') as HTMLDivElement;
     const posterImg = document.getElementById('poster-img') as HTMLImageElement;
@@ -259,11 +284,6 @@ const initViewer = async () => {
     }
 
     // ── Load splat files ──────────────────────────────────────────────────────
-    const loadList = [
-        ...url.searchParams.getAll('load'),
-        ...url.searchParams.getAll('content')
-    ];
-    const filenameList = url.searchParams.getAll('filename');
 
     // Track effective viewer options (URL params take priority over config.json)
     let effectiveMode = url.searchParams.get('mode') as 'orbit' | 'walk' | null;
@@ -277,16 +297,47 @@ const initViewer = async () => {
                 ? decodeURIComponent(filenameList[i])
                 : (decoded.split('/').pop() ?? decoded);
 
+            setLoadingMsg('씬 로딩 중...');
             await loadSplatFromUrl(decoded, name, events, scene);
         }
     } else {
         // ── No ?load= → fall back to config.json ────────────────────────────
-        const cfg = await loadConfig();
+        // configPromise was started in parallel with createGraphicsDevice() above;
+        // by now it is likely already resolved.
+        const cfg = await configPromise;
         if (cfg) {
             const project = cfg.projects[cfg.activeProject];
             if (project?.file) {
                 const filename = project.file.split('/').pop() ?? project.file;
-                await loadSplatFromUrl(project.file, filename, events, scene);
+                const wo = project.walk;
+
+                // ── Load splat + collision in parallel ───────────────────────
+                // Both downloads are independent; running them concurrently
+                // eliminates the full round-trip time of the collision file.
+                const loadCollision = async (): Promise<ICollisionSystem | undefined> => {
+                    if (!wo) return undefined;
+                    if (wo.voxelFile) {
+                        const vc = new VoxelCollisionSystem();
+                        const ok = await vc.load(wo.voxelFile);
+                        if (!ok) console.warn('[supersplat-viewer] voxel collision failed to load:', wo.voxelFile);
+                        return ok ? vc : undefined;
+                    }
+                    if (wo.collisionFile) {
+                        const gc = new CollisionSystem();
+                        const ok = await gc.load(wo.collisionFile, scene.app);
+                        if (!ok) console.warn('[supersplat-viewer] collision mesh failed to load:', wo.collisionFile);
+                        return ok ? gc : undefined;
+                    }
+                    return undefined;
+                };
+
+                setLoadingMsg('씬 로딩 중...');
+                const tLoad = performance.now();
+                const [, collision] = await Promise.all([
+                    loadSplatFromUrl(project.file, filename, events, scene),
+                    loadCollision()
+                ]);
+                console.log(`[supersplat-viewer] scene loaded in ${((performance.now() - tLoad) / 1000).toFixed(2)}s`);
 
                 // Apply viewer options from config (URL params take priority)
                 const vo = project.viewer ?? {};
@@ -302,31 +353,7 @@ const initViewer = async () => {
                     effectiveAutorotate = String(vo.autorotate);
                 }
 
-                // ── Walk config from config.json ─────────────────────────────
-                const wo = project.walk;
                 if (wo) {
-                    let collision: ICollisionSystem | undefined;
-
-                    if (wo.voxelFile) {
-                        // Voxel-based collision (SuperSplat native format)
-                        const vc = new VoxelCollisionSystem();
-                        const ok = await vc.load(wo.voxelFile);
-                        if (ok) {
-                            collision = vc;
-                        } else {
-                            console.warn('[supersplat-viewer] voxel collision failed to load:', wo.voxelFile);
-                        }
-                    } else if (wo.collisionFile) {
-                        // GLB-based collision (fallback)
-                        const gc = new CollisionSystem();
-                        const ok = await gc.load(wo.collisionFile, scene.app);
-                        if (ok) {
-                            collision = gc;
-                        } else {
-                            console.warn('[supersplat-viewer] collision mesh failed to load:', wo.collisionFile);
-                        }
-                    }
-
                     walkController.configure({
                         collision,
                         eyeHeight:     wo.eyeHeight,
@@ -341,6 +368,9 @@ const initViewer = async () => {
             }
         }
     }
+
+    // ── Hide loading overlay once all splat files have been processed ────────
+    hideLoading();
 
     // ── Handle mode (orbit / walk) ────────────────────────────────────────────
     if (effectiveMode === 'walk') {

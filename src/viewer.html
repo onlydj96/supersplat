@@ -6,6 +6,9 @@
         <base href="__BASE_HREF__">
         <link rel="stylesheet" href="./viewer.css">
         <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+        <!-- Early connection warm-up for the CDN that hosts scene/collision files -->
+        <link rel="preconnect" href="https://pub-008462eef1854bbebb57dac11df361c7.r2.dev" crossorigin>
+        <link rel="dns-prefetch" href="https://pub-008462eef1854bbebb57dac11df361c7.r2.dev">
     </head>
     <body>
         <div id="canvas-container">
@@ -13,7 +16,18 @@
             <div id="poster" class="hidden">
                 <img id="poster-img" alt="" />
             </div>
+            <div id="loading">
+                <div class="loading-spinner"></div>
+                <p class="loading-text">Loading...</p>
+            </div>
         </div>
+        <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw-viewer.js')
+                    .then(() => console.log('[sw-viewer] registered'))
+                    .catch(err => console.warn('[sw-viewer] registration failed:', err));
+            }
+        </script>
         <script type="module" src="./viewer.js"></script>
     </body>
 </html>
